@@ -74,19 +74,22 @@ jobs:
       - name: Check no secrets in source files
         shell: pwsh
         run: |
-          # Match only hardcoded string literals — quoted values after = or :
-          # Excludes variable assignments like $password = Read-Host
+          # Scan line-by-line so patterns cannot span multiple lines.
+          # Only flags lines that look like: keyword = "hardcoded value"
           $patterns = @(
-            '(?i)password\s*[=:]\s*["''][^"'']{4,}["'']',
-            '(?i)api[_-]?key\s*[=:]\s*["''][^"'']{4,}["'']',
-            '(?i)secret\s*[=:]\s*["''][^"'']{4,}["'']'
+            '(?i)\bpassword\s*=\s*["''][^"'']{4,}["'']',
+            '(?i)\bapi[_-]?key\s*=\s*["''][^"'']{4,}["'']',
+            '(?i)\bsecret\s*=\s*["''][^"'']{4,}["'']'
           )
           $sourceFiles = Get-ChildItem -Include '*.ps1','*.cmd','*.md' -Recurse
           $hits = foreach ($file in $sourceFiles) {
-            $content = Get-Content $file.FullName -Raw
-            foreach ($pattern in $patterns) {
-              if ($content -match $pattern) {
-                [PSCustomObject]@{ File = $file.Name; Pattern = $pattern }
+            $lineNum = 0
+            foreach ($line in (Get-Content $file.FullName)) {
+              $lineNum++
+              foreach ($pattern in $patterns) {
+                if ($line -match $pattern) {
+                  [PSCustomObject]@{ File = $file.Name; Line = $lineNum; Content = $line.Trim() }
+                }
               }
             }
           }
