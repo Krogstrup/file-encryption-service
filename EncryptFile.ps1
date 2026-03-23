@@ -31,7 +31,7 @@ function Get-7ZipPath {
     return $null
 }
 
-function Validate-FilePaths {
+function Test-FilePath {
     param([string[]]$Paths)
 
     if (-not $Paths) {
@@ -54,7 +54,7 @@ function Validate-FilePaths {
     return $existingPaths
 }
 
-function SecureRead-Password {
+function Read-SecurePassword {
     [CmdletBinding()]
     param(
         [string]$Prompt = "Enter password:"
@@ -89,15 +89,15 @@ try {
         exit 2
     }
 
-    $selectedFiles = Validate-FilePaths -Paths $FilePaths
+    $selectedFiles = Test-FilePath -Paths $FilePaths
     if (-not $selectedFiles) {
         Write-Error "No valid files selected."
         exit 1
     }
 
     # Ask once for password, confirm once to reduce mistakes.
-    $pw1 = SecureRead-Password -Prompt "Enter encryption password"
-    $pw2 = SecureRead-Password -Prompt "Confirm password"
+    $pw1 = Read-SecurePassword -Prompt "Enter encryption password"
+    $pw2 = Read-SecurePassword -Prompt "Confirm password"
 
     $plain1 = Convert-SecureStringToPlainText $pw1
     $plain2 = Convert-SecureStringToPlainText $pw2

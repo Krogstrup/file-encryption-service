@@ -24,6 +24,7 @@ jobs:
         run: |
           $results = Invoke-ScriptAnalyzer `
             -Path EncryptFile.ps1 `
+            -Settings PSScriptAnalyzerSettings.psd1 `
             -Severity Error, Warning `
             -ReportSummary
 
@@ -73,10 +74,12 @@ jobs:
       - name: Check no secrets in source files
         shell: pwsh
         run: |
+          # Match only hardcoded string literals — quoted values after = or :
+          # Excludes variable assignments like $password = Read-Host
           $patterns = @(
-            '(?i)password\s*=\s*\S+',
-            '(?i)api[_-]?key\s*=\s*\S+',
-            '(?i)secret\s*=\s*\S+'
+            '(?i)password\s*[=:]\s*["''][^"'']{4,}["'']',
+            '(?i)api[_-]?key\s*[=:]\s*["''][^"'']{4,}["'']',
+            '(?i)secret\s*[=:]\s*["''][^"'']{4,}["'']'
           )
           $sourceFiles = Get-ChildItem -Include '*.ps1','*.cmd','*.md' -Recurse
           $hits = foreach ($file in $sourceFiles) {
