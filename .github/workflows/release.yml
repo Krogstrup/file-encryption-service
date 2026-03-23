@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          echo "tag=$tag" >> $env:GITHUB_OUTPUT
+          Write-Host "Releasing $tag"
+
+      - name: Build release archive
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.tag }}'
+          $archiveName = "file-encryption-service-$version.zip"
+
+          Compress-Archive -Path @(
+            'EncryptFile.ps1',
+            'EncryptWith7Zip.cmd',
+            'README.md',
+            'UserGuide.md',
+            'AdminGuide.md',
+            'SecurityNotes.md',
+            'CHANGELOG.md'
+          ) -DestinationPath $archiveName
+
+          Write-Host "Created $archiveName" -ForegroundColor Green
+
+      - name: Extract changelog entry for this version
+        id: changelog
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.tag }}' -replace '^v', ''
+          $content = Get-Content CHANGELOG.md -Raw
+
+          # Extract section for this version between ## [x.y.z] and the next ## heading
+          if ($content -match "(?ms)## \[$([regex]::Escape($version))\].*?(?=\n## |\z)") {
+            $entry = $matches[0].Trim()
+          } else {
+            $entry = "See CHANGELOG.md for details."
+          }
+
+          # Write to file to avoid multiline output escaping issues
+          $entry | Set-Content release_notes.md
+          Write-Host "Extracted changelog entry for $version"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.version.outputs.tag }}
+          body_path: release_notes.md
+          files: file-encryption-service-${{ steps.version.outputs.tag }}.zip
+          fail_on_unmatched_files: true

@@ -1,0 +1,15 @@
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.crt
+*.p12
+secrets/
+credentials/
+private/
+
+# Claude Code
+.claude/settings.local.json
+.claude/memory/

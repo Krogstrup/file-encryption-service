@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: PSScriptAnalyzer
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -Repository PSGallery
+
+      - name: Lint EncryptFile.ps1
+        shell: pwsh
+        run: |
+          $results = Invoke-ScriptAnalyzer `
+            -Path EncryptFile.ps1 `
+            -Severity Error, Warning `
+            -ReportSummary
+
+          if ($results) {
+            $results | Format-Table -AutoSize
+            Write-Error "PSScriptAnalyzer found $($results.Count) issue(s)."
+            exit 1
+          }
+
+          Write-Host "No issues found." -ForegroundColor Green
+
+  validate-structure:
+    name: Validate file structure
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check required files exist
+        shell: pwsh
+        run: |
+          $required = @(
+            'EncryptFile.ps1',
+            'EncryptWith7Zip.cmd',
+            'README.md',
+            'CHANGELOG.md',
+            '.gitignore'
+          )
+          $missing = $required | Where-Object { -not (Test-Path $_) }
+          if ($missing) {
+            Write-Error "Missing required files: $($missing -join ', ')"
+            exit 1
+          }
+          Write-Host "All required files present." -ForegroundColor Green
+
+      - name: Check CMD references correct PS1 filename
+        shell: pwsh
+        run: |
+          $cmdContent = Get-Content EncryptWith7Zip.cmd -Raw
+          if ($cmdContent -notmatch 'EncryptFile\.ps1') {
+            Write-Error "EncryptWith7Zip.cmd does not reference EncryptFile.ps1"
+            exit 1
+          }
+          Write-Host "CMD references PS1 correctly." -ForegroundColor Green
+
+      - name: Check no secrets in source files
+        shell: pwsh
+        run: |
+          $patterns = @(
+            '(?i)password\s*=\s*\S+',
+            '(?i)api[_-]?key\s*=\s*\S+',
+            '(?i)secret\s*=\s*\S+'
+          )
+          $sourceFiles = Get-ChildItem -Include '*.ps1','*.cmd','*.md' -Recurse
+          $hits = foreach ($file in $sourceFiles) {
+            $content = Get-Content $file.FullName -Raw
+            foreach ($pattern in $patterns) {
+              if ($content -match $pattern) {
+                [PSCustomObject]@{ File = $file.Name; Pattern = $pattern }
+              }
+            }
+          }
+          if ($hits) {
+            $hits | Format-Table -AutoSize
+            Write-Error "Potential secrets detected in source files."
+            exit 1
+          }
+          Write-Host "No secrets detected." -ForegroundColor Green
