@@ -2,33 +2,38 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   release:
-    name: Create GitHub Release
+    name: Auto-version and release
     runs-on: windows-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # required: tag action needs full history to find previous tag
 
-      - name: Extract version from tag
-        id: version
-        shell: pwsh
-        run: |
-          $tag = $env:GITHUB_REF_NAME
-          echo "tag=$tag" >> $env:GITHUB_OUTPUT
-          Write-Host "Releasing $tag"
+      - name: Bump version and push tag
+        id: tag
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: patch        # commits without feat/fix prefix → patch
+          release_branches: main
+          # Conventional commit mapping:
+          #   fix:  / fix(...)!  → patch
+          #   feat: / feat(...)! → minor
+          #   BREAKING CHANGE    → major
 
       - name: Build release archive
         shell: pwsh
         run: |
-          $version = '${{ steps.version.outputs.tag }}'
+          $version = '${{ steps.tag.outputs.new_tag }}'
           $archiveName = "file-encryption-service-$version.zip"
 
           Compress-Archive -Path @(
@@ -41,30 +46,13 @@ jobs:
             'CHANGELOG.md'
           ) -DestinationPath $archiveName
 
-          Write-Host "Created $archiveName" -ForegroundColor Green
-
-      - name: Extract changelog entry for this version
-        id: changelog
-        shell: pwsh
-        run: |
-          $version = '${{ steps.version.outputs.tag }}' -replace '^v', ''
-          $content = Get-Content CHANGELOG.md -Raw
-
-          # Extract section for this version between ## [x.y.z] and the next ## heading
-          if ($content -match "(?ms)## \[$([regex]::Escape($version))\].*?(?=\n## |\z)") {
-            $entry = $matches[0].Trim()
-          } else {
-            $entry = "See CHANGELOG.md for details."
-          }
-
-          # Write to file to avoid multiline output escaping issues
-          $entry | Set-Content release_notes.md
-          Write-Host "Extracted changelog entry for $version"
+          Write-Host "Created $archiveName"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ steps.version.outputs.tag }}
-          body_path: release_notes.md
-          files: file-encryption-service-${{ steps.version.outputs.tag }}.zip
+          tag_name: ${{ steps.tag.outputs.new_tag }}
+          name: ${{ steps.tag.outputs.new_tag }}
+          body: ${{ steps.tag.outputs.changelog }}
+          files: file-encryption-service-${{ steps.tag.outputs.new_tag }}.zip
           fail_on_unmatched_files: true
